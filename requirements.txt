@@ -4,4 +4,4 @@ h5py
 scipy
 plotly
 igor2
-kaleido
+kaleido==0.2.1
