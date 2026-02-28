@@ -1,0 +1,7 @@
+streamlit
+numpy
+h5py
+scipy
+plotly
+igor2
+kaleido
