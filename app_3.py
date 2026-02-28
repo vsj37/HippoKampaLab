@@ -56,6 +56,7 @@ defaults = dict(
     series_total=0,
     fig_extra_traces=[],  # list of (x, y, color, name) for overlays
     key_nav=0,             # incremented by keyboard JS to trigger rerun
+    passive_results=None,  # stores RMP, Rin, Tau between reruns
 )
 for k, v in defaults.items():
     if k not in st.session_state:
@@ -84,14 +85,21 @@ with st.sidebar:
             if not HAS_IBW:
                 st.error("igor2 not installed. Run: pip install igor2")
             else:
-                data = bw.load(io.BytesIO(st.session_state.file_bytes))
-                raw = data['wave']['wData']
-                st.session_state.x_scale = data['wave']['wave_header']['sfA'][0]
-                sweep = raw[:, 0] if raw.ndim == 2 else raw
-                st.session_state.sweep_data = sweep
-                st.session_state.time_vec = np.arange(len(sweep)) * st.session_state.x_scale
-                st.session_state.total_sweeps = 1
-                st.session_state.mode = 'ibw'
+                try:
+                    tmp_fd, tmp_path = tempfile.mkstemp(suffix='.ibw')
+                    os.close(tmp_fd)
+                    with open(tmp_path, 'wb') as f:
+                        f.write(st.session_state.file_bytes)
+                    data = bw.load(tmp_path)
+                    raw = data['wave']['wData']
+                    st.session_state.x_scale = data['wave']['wave_header']['sfA'][0]
+                    sweep = raw[:, 0] if raw.ndim == 2 else raw
+                    st.session_state.sweep_data = sweep
+                    st.session_state.time_vec = np.arange(len(sweep)) * st.session_state.x_scale
+                    st.session_state.total_sweeps = 1
+                    st.session_state.mode = 'ibw'
+                except Exception as e:
+                    st.error(f"IBW load error: {e}")
 
         elif file_type == "HDF5 Master (.h5)":
             suffix = os.path.splitext(uploaded.name)[1]
@@ -179,6 +187,20 @@ with st.sidebar:
     rc_start = st.number_input("RC Fit Start (ms)", value=85.0)
     rc_end = st.number_input("RC Fit End (ms)", value=145.0)
     run_passive = st.button("🚀 Run Passive Analysis")
+
+    # Persistent results box — survives reruns
+    if st.session_state.passive_results:
+        r = st.session_state.passive_results
+        st.markdown(
+            f"""
+            <div style="background:#1a1a2e;border:1px solid #3498db;border-radius:6px;padding:10px;font-family:monospace;font-size:13px;color:#3498db;">
+            <b>RMP:</b> {r['rmp']:.2f} mV<br>
+            <b>R_in:</b> {r['rin']:.1f} MΩ<br>
+            <b>Tau:</b> {r['tau']:.1f} ms
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
     st.divider()
 
@@ -315,7 +337,8 @@ if sweep is not None and time is not None:
             r_in = abs((popt[1] - popt[2]) / i_inj) * 1000
             tau = popt[0]
 
-            st.success(f"**RMP:** {rmp:.2f} mV   |   **R_in:** {r_in:.1f} MΩ   |   **Tau:** {tau:.1f} ms")
+            # Store results persistently so they survive rerun
+            st.session_state.passive_results = {'rmp': rmp, 'rin': r_in, 'tau': tau}
 
             # Add fit overlay
             x_fit = x_data + rc_start
