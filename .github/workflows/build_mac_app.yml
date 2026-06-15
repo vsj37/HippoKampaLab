@@ -1,1 +1,40 @@
+name: Build macOS App
 
+# This allows you to run the build manually from the GitHub website
+on:
+  workflow_dispatch:
+
+jobs:
+  build-macos:
+    runs-on: macos-latest
+
+    steps:
+    - name: Check out repository code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.10' # Adjust if you use a newer Python version
+
+    - name: Install Dependencies
+      run: |
+        python -m pip upgrade pip
+        pip install pyinstaller pyqt6 pyqtgraph numpy scipy h5py pillow heka_reader neo igor2
+
+    - name: Compile App with PyInstaller
+      run: |
+        pyinstaller --noconsole --onefile --add-data "plugins:plugins" gojo.py
+
+    - name: Compress App Bundle for Download
+      run: |
+        # PyInstaller on Mac creates a directory/bundle ending in .app
+        # We zip it so GitHub can handle it as a single downloadable file
+        cd dist
+        zip -r kakashi_mac.zip gojo.app
+
+    - name: Upload Finished App to GitHub
+      uses: actions/upload-artifact@v4
+      with:
+        name: macos-executable
+        path: dist/kakashi_mac.zip
